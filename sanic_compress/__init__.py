@@ -3,10 +3,11 @@ import gzip
 DEFAULT_MIME_TYPES = frozenset([
     'text/html', 'text/css', 'text/xml',
     'application/json',
-    'application/javascript'])
+    'application/javascript'
+])
 
 
-class Compress(object):
+class Compress:
     def __init__(self, app=None):
         self.app = app
         if app is not None:
@@ -22,9 +23,17 @@ class Compress(object):
         for k, v in defaults:
             app.config.setdefault(k, v)
 
+        @app.middleware('request')
+        async def decompress_request(request):
+            return await self._decompress_request(request)
+
         @app.middleware('response')
         async def compress_response(request, response):
-            return (await self._compress_response(request, response))
+            return await self._compress_response(request, response)
+
+    async def _decompress_request(self, request):
+        if 'gzip' in request.headers.get('Content-Encoding', '').split(','):
+            request.body = self.decompress(request)
 
     async def _compress_response(self, request, response):
         accept_encoding = request.headers.get('Accept-Encoding', '')
@@ -56,6 +65,11 @@ class Compress(object):
             response.headers['Vary'] = 'Accept-Encoding'
 
         return response
+
+    def decompress(self, request):
+        out = gzip.decompress(request.body)
+
+        return out
 
     def compress(self, response):
         out = gzip.compress(
